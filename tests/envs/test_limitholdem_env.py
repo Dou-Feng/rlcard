@@ -2,15 +2,15 @@ import unittest
 
 import rlcard
 from rlcard.agents.random_agent import RandomAgent
-from .determism_util import is_deterministic
-
+from determism_util import is_deterministic
+from rlcard.games.limitholdem.utils import Action_Enum
 
 class TestLimitholdemEnv(unittest.TestCase):
 
     def test_reset_and_extract_state(self):
         env = rlcard.make('limit-holdem')
         state, _ = env.reset()
-        self.assertEqual(state['obs'].size, 72)
+        self.assertEqual(state['obs'].size, 52 + 4 * (env.num_players+1))
         for action in state['legal_actions']:
             self.assertLess(action, env.num_actions)
 
@@ -22,34 +22,34 @@ class TestLimitholdemEnv(unittest.TestCase):
         env.reset()
         legal_actions = env._get_legal_actions()
         for action in legal_actions:
-            self.assertIn(action, env.actions)
+            self.assertIn(action, Action_Enum)
 
     def test_decode_action(self):
         env = rlcard.make('limit-holdem')
         state, _ = env.reset()
-        for action in state['legal_actions']:
+        for action in state['legal_actions'].items():
             decoded = env._decode_action(action)
-            self.assertIn(decoded, env.actions)
+            self.assertIn(decoded[0], Action_Enum)
 
-        decoded = env._decode_action(3)
-        self.assertEqual(decoded, 'fold')
+        decoded = env._decode_action((Action_Enum.Fold, 0))
+        self.assertEqual(decoded[0], Action_Enum.Fold)
 
-        env.step(0)
-        decoded = env._decode_action(0)
-        self.assertEqual(decoded, 'check')
+        env.step((0,0))
+        decoded = env._decode_action((Action_Enum.Check,0))
+        self.assertEqual(decoded[0], Action_Enum.Check)
 
     def test_step(self):
         env = rlcard.make('limit-holdem')
         state, player_id = env.reset()
         self.assertEqual(player_id, env.get_player_id())
         action = list(state['legal_actions'].keys())[0]
-        _, player_id = env.step(action)
+        _, player_id = env.step((action, 0))
         self.assertEqual(player_id, env.get_player_id())
 
     def test_step_back(self):
         env = rlcard.make('limit-holdem', config={'allow_step_back':True})
         _, player_id = env.reset()
-        env.step(0)
+        env.step((0, 0))
         _, back_player_id = env.step_back()
         self.assertEqual(player_id, back_player_id)
         self.assertEqual(env.step_back(), False)
@@ -61,6 +61,21 @@ class TestLimitholdemEnv(unittest.TestCase):
     def test_run(self):
         env = rlcard.make('limit-holdem')
         agents = [RandomAgent(env.num_actions) for _ in range(env.num_players)]
+        env.set_agents(agents)
+        trajectories, payoffs = env.run(is_training=False)
+        self.assertEqual(len(trajectories), 2)
+        total = 0
+        for payoff in payoffs:
+            total += payoff
+        self.assertEqual(total, 0)
+
+    def test_run_mock_agent(self):
+        env = rlcard.make('limit-holdem')
+        from tests.agents.mock_agent import MockAgent
+        agents = [MockAgent(env.num_actions) for _ in range(env.num_players)]
+        
+        agents[0].append_action([(Action_Enum.Check, 38), (Action_Enum.Raise, 40), (Action_Enum.Fold, 40)])
+        agents[1].append_action([(Action_Enum.Call, 17), (Action_Enum.Check, 40), (Action_Enum.Fold, 40)])
         env.set_agents(agents)
         trajectories, payoffs = env.run(is_training=False)
         self.assertEqual(len(trajectories), 2)

@@ -29,6 +29,8 @@ class LimitHoldemGame:
         # Save betting history
         self.history_raise_nums = [0 for _ in range(4)]
 
+        self.history_raise_amount = [0 for _ in range(4)]
+
         self.dealer = None
         self.players = None
         self.judger = None
@@ -73,9 +75,12 @@ class LimitHoldemGame:
 
         # Randomly choose a small blind and a big blind
         s = self.np_random.randint(0, self.num_players)
+        s = 1 # for debug
         b = (s + 1) % self.num_players
-        self.players[b].in_chips = self.big_blind
-        self.players[s].in_chips = self.small_blind
+        # self.players[b].in_chips = self.big_blind
+        self.players[b].raise_in(self.big_blind)
+        # self.players[s].in_chips = self.small_blind
+        self.players[s].raise_in(self.small_blind)
 
         # The player next to the big blind plays the first
         self.game_pointer = (b + 1) % self.num_players
@@ -87,7 +92,7 @@ class LimitHoldemGame:
                            num_players=self.num_players,
                            np_random=self.np_random)
 
-        self.round.start_new_round(game_pointer=self.game_pointer, raised=[p.in_chips for p in self.players])
+        self.round.start_new_round(self.players, game_pointer=self.game_pointer, raised=[p.in_chips for p in self.players])
 
         # Count the round. There are 4 rounds in each game.
         self.round_counter = 0
@@ -100,14 +105,17 @@ class LimitHoldemGame:
         # Save betting history
         self.history_raise_nums = [0 for _ in range(4)]
 
+        # Save betting amount history
+        self.history_raise_amount = [0 for _ in range(4)]
+
         return state, self.game_pointer
 
-    def step(self, action):
+    def step(self, action_pack):
         """
         Get the next state
 
         Args:
-            action (str): a specific action. (call, raise, fold, or check)
+            action_pack ((str, amount)): a specific action. ((call, _), (raise, amount), (fold, _), or (check, _))
 
         Returns:
             (tuple): Tuple containing:
@@ -126,11 +134,13 @@ class LimitHoldemGame:
             rn = copy(self.history_raise_nums)
             self.history.append((r, b, r_c, d, p, ps, rn))
 
+        # print("Start round", self.round_counter)
         # Then we proceed to the next round
-        self.game_pointer = self.round.proceed_round(self.players, action)
+        self.game_pointer = self.round.proceed_round(self.players, action_pack)
 
         # Save the current raise num to history
         self.history_raise_nums[self.round_counter] = self.round.have_raised
+        self.history_raise_amount[self.round_counter] = self.round.round_max_raise_amount()
 
         # If a round is over, we deal more public cards
         if self.round.is_over():
@@ -144,12 +154,9 @@ class LimitHoldemGame:
             elif self.round_counter <= 2:
                 self.public_cards.append(self.dealer.deal_card())
 
-            # Double the raise amount for the last two rounds
-            if self.round_counter == 1:
-                self.round.raise_amount = 2 * self.raise_amount
 
             self.round_counter += 1
-            self.round.start_new_round(self.game_pointer)
+            self.round.start_new_round(self.players, self.game_pointer)
 
         state = self.get_state(self.game_pointer)
 
@@ -170,7 +177,7 @@ class LimitHoldemGame:
 
     def get_num_players(self):
         """
-        Return the number of players in limit texas holdem
+        Return the number of players in texas holdem
 
         Returns:
             (int): The number of players in the game
@@ -183,9 +190,9 @@ class LimitHoldemGame:
         Return the number of applicable actions
 
         Returns:
-            (int): The number of actions. There are 4 actions (call, raise, check and fold)
+            (int): The number of actions. There are 5 actions (call, raise, check, fold and all in)
         """
-        return 4
+        return 5
 
     def get_player_id(self):
         """
@@ -206,10 +213,11 @@ class LimitHoldemGame:
         Returns:
             (dict): The state of the player
         """
-        chips = [self.players[i].in_chips for i in range(self.num_players)]
+        chips = [(self.players[i].in_chips, self.players[i].rest_chips) for i in range(self.num_players)]
         legal_actions = self.get_legal_actions()
         state = self.players[player].get_state(self.public_cards, chips, legal_actions)
         state['raise_nums'] = self.history_raise_nums
+        state['raise_amount'] = self.history_raise_amount
 
         return state
 
@@ -237,9 +245,11 @@ class LimitHoldemGame:
         Returns:
             (list): Each entry corresponds to the payoff of one player
         """
-        hands = [p.hand + self.public_cards if p.status == PlayerStatus.ALIVE else None for p in self.players]
+        hands = [p.hand + self.public_cards \
+                    if p.status == PlayerStatus.ALIVE or p.status == PlayerStatus.ALLIN \
+                    else None for p in self.players]
         chips_payoffs = self.judger.judge_game(self.players, hands)
-        payoffs = np.array(chips_payoffs) / self.big_blind
+        payoffs = np.array(chips_payoffs)
         return payoffs
 
     def get_legal_actions(self):
@@ -247,6 +257,10 @@ class LimitHoldemGame:
         Return the legal actions for current player
 
         Returns:
-            (list): A list of legal actions
+            (dict): A dict of legal actions
         """
-        return self.round.get_legal_actions()
+        return self.round.get_legal_actions(self.players)
+
+    
+    def max_player_raise_amount(self, id = None) -> int:
+        return self.round.max_player_raise_amount(self.players, id)

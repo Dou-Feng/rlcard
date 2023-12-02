@@ -145,6 +145,7 @@ class Env(object):
             else:
                 action = self.agents[player_id].step(state)
 
+            print("Player {}, raw action is {}".format(player_id, action))
             # Environment steps
             next_state, next_player_id = self.step(action, self.agents[player_id].use_raw)
             # Save action

@@ -15,7 +15,7 @@ class RandomAgent(object):
         self.num_actions = num_actions
 
     @staticmethod
-    def step(state):
+    def step(state, rest_chips=1000):
         ''' Predict the action given the curent state in gerenerating training data.
 
         Args:
@@ -24,9 +24,12 @@ class RandomAgent(object):
         Returns:
             action (int): The action predicted (randomly chosen) by the random agent
         '''
-        return np.random.choice(list(state['legal_actions'].keys()))
+        if len(state['legal_actions']):
+            return np.random.choice(list(state['legal_actions'].keys())), min(np.random.randint(1, 100), rest_chips)
+        else:
+            return (0, 0)
 
-    def eval_step(self, state):
+    def eval_step(self, state, rest_chips=1000):
         ''' Predict the action given the current state for evaluation.
             Since the random agents are not trained. This function is equivalent to step function
 
@@ -44,4 +47,4 @@ class RandomAgent(object):
         info = {}
         info['probs'] = {state['raw_legal_actions'][i]: probs[list(state['legal_actions'].keys())[i]] for i in range(len(state['legal_actions']))}
 
-        return self.step(state), info
+        return self.step(state, rest_chips), info

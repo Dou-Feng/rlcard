@@ -6,11 +6,14 @@ from collections import OrderedDict
 import rlcard
 from rlcard.envs import Env
 from rlcard.games.limitholdem import Game
+from rlcard.games.limitholdem.utils import Action_Enum
 
 DEFAULT_GAME_CONFIG = {
         'game_num_players': 2,
         }
 
+CARD_NUM = 52
+ROUND_NUM = 4
 class LimitholdemEnv(Env):
     ''' Limitholdem Environment
     '''
@@ -22,7 +25,6 @@ class LimitholdemEnv(Env):
         self.default_game_config = DEFAULT_GAME_CONFIG
         self.game = Game()
         super().__init__(config)
-        self.actions = ['call', 'raise', 'fold', 'check']
         self.state_shape = [[72] for _ in range(self.num_players)]
         self.action_shape = [None for _ in range(self.num_players)]
 
@@ -50,24 +52,25 @@ class LimitholdemEnv(Env):
         '''
         extracted_state = {}
 
-        legal_actions = OrderedDict({self.actions.index(a): None for a in state['legal_actions']})
-        extracted_state['legal_actions'] = legal_actions
+        extracted_state['legal_actions'] = OrderedDict({a.value:amount for a, amount in state['legal_actions'].items()})
 
         public_cards = state['public_cards']
         hand = state['hand']
         raise_nums = state['raise_nums']
         cards = public_cards + hand
         idx = [self.card2index[card] for card in cards]
-        obs = np.zeros(72)
+        
+        # we should add more space here for the generic in case the number of players increase.
+        obs = np.zeros(CARD_NUM + ROUND_NUM * (self.num_players+1))
         obs[idx] = 1
         for i, num in enumerate(raise_nums):
-            obs[52 + i * 5 + num] = 1
+            obs[52 + i * (self.num_players+1) + num] = 1
         extracted_state['obs'] = obs
-
+        extracted_state['raise_amount'] = state['raise_amount']
         extracted_state['raw_obs'] = state
         extracted_state['raw_legal_actions'] = [a for a in state['legal_actions']]
         extracted_state['action_record'] = self.action_recorder
-
+        extracted_state['avail_raise_amount'] = [self.game.max_player_raise_amount(i) for i in range(self.num_players)]
         return extracted_state
 
     def get_payoffs(self):
@@ -78,22 +81,32 @@ class LimitholdemEnv(Env):
         '''
         return self.game.get_payoffs()
 
-    def _decode_action(self, action_id):
+    def _decode_action(self, action_pack, race=True):
         ''' Decode the action for applying to the game
 
         Args:
-            action id (int): action id
+            action pack ([str, int]): action id, and amount
 
         Returns:
-            action (str): action for the game
+            action ((str, int)): action for the game, and amount
         '''
+        if not isinstance(action_pack, tuple):
+            action_id = action_pack
+            amount = 0
+        else:
+            action_id, amount = action_pack
         legal_actions = self.game.get_legal_actions()
-        if self.actions[action_id] not in legal_actions:
-            if 'check' in legal_actions:
-                return 'check'
+        if  not Action_Enum(action_id) in legal_actions:
+            if Action_Enum.Check in legal_actions:
+                return Action_Enum.Check
             else:
-                return 'fold'
-        return self.actions[action_id]
+                return Action_Enum.All_in if race else Action_Enum.Fold
+        
+        # only raise operation needs this field
+        amount = max(amount, 1)
+        amount = min(amount, self.game.max_player_raise_amount())
+
+        return Action_Enum(action_id), amount
 
     def get_perfect_information(self):
         ''' Get the perfect information of the current state

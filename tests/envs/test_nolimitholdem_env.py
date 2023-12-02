@@ -3,7 +3,7 @@ import unittest
 import rlcard
 from rlcard.agents.random_agent import RandomAgent
 from rlcard.games.nolimitholdem.round import Action
-from .determism_util import is_deterministic
+from determism_util import is_deterministic
 
 
 class TestNolimitholdemEnv(unittest.TestCase):

@@ -1,5 +1,22 @@
 import numpy as np
+from enum import IntEnum
 
+class Action_Enum(IntEnum):
+    Call = 0
+    Raise = 1
+    Fold = 2
+    Check = 3
+    All_in = 4
+
+    def to_enum(ss):
+        ss = ss.lower()
+        if ss == 'call': return Action_Enum.Call
+        elif ss == 'raise': return Action_Enum.Raise
+        elif ss == 'fold': return Action_Enum.Fold
+        elif ss == 'check': return Action_Enum.Check
+        elif ss == 'allin': return Action_Enum.All_in
+        else:
+            raise Exception("Action Enum::to_enum: Unsupported Enum Type")
 class Hand:
     def __init__(self, all_cards):
         self.all_cards = all_cards # two hand cards + five public cards
